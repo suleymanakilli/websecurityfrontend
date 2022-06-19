@@ -1,13 +1,17 @@
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import AuthService from '../services/authService';
 import Spinner from './spinner';
 import { toast } from "react-toastify";
+import ReCAPTCHA from 'react-google-recaptcha'
+import axios from 'axios';
 
 function Login() {
     let navigate = useNavigate();
+    const recaptchaRef = useRef();
     const [loginState, setLoginState] = useState({ email: "", password: "" })
     const [isFetching, setIsFetching] = useState(false)
+    const [errorCount, setErrorCount] = useState(0)
 
     const handleChange = e => {
         const name = e.target.name;
@@ -16,9 +20,13 @@ function Login() {
         setLoginState(prev => ({ ...prev, [name]: value }))
     }
 
-    const handleSubmit = e => {
-        e.preventDefault()
-        console.log(loginState)
+    const checkRecaptcha = async () => {
+        const res = await axios.post('/users/verifycaptcha', { secret: '6LeaCH4gAAAAAHri5nZigAhC_QN2KdvI0KVegkIk', token: recaptchaRef.current.getValue() })
+        console.log("res.data:", res.data)
+        return res.data.success
+    }
+
+    const login = () => {
         let authService = new AuthService()
         setIsFetching(true)
         authService.login(loginState)
@@ -29,9 +37,38 @@ function Login() {
             })
             .catch(err => {
                 toast.error(err.response.data.message)
+                setErrorCount(errorCount + 1)
+                if (errorCount > 2) {
+                    recaptchaRef.current.reset()
+                }
             })
             .finally(() => setIsFetching(false))
+    }
+
+    const handleSubmit = async e => {
+        e.preventDefault()
+        console.log(loginState)
+
+        if (errorCount < 3) {
+            login()
+        }
+        else {
+            const result = await checkRecaptcha();
+            console.log("resultcaptcha : ", result)
+            if (result) {
+                login()
+            }
+            else {
+                toast.error("Captcha yanlış")
+            }
+        }
+
+
         //navigate('login-confirm', { state: { email: loginState.email } })
+    }
+
+    const onChangeCaptcha = (value) => {
+        console.log('Captcha value:', value);
     }
     return (
         <div className="main">
@@ -41,6 +78,21 @@ function Login() {
                     placeholder="Email" name="email" value={loginState.email} />
                 <input className="form-item" type="password" required onChange={handleChange}
                     placeholder="Password" name="password" value={loginState.password} />
+                {errorCount > 2 ?
+                    <div style={{
+                        display: "flex",
+                        justifyContent: "center",
+                        marginBottom: "1rem"
+                    }}>
+                        <ReCAPTCHA
+                            ref={recaptchaRef}
+                            sitekey="6LeaCH4gAAAAAGDTrEMUetcVevGempDcE0Sau-bk"
+                            onChange={onChangeCaptcha}
+                        />
+                    </div> : null}
+
+
+
                 <button className="submit" disabled={isFetching}>{isFetching ? <Spinner /> : 'Sign in'}</button>
             </form>
 
